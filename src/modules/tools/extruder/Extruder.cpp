@@ -23,6 +23,7 @@
 #include "ConfigValue.h"
 #include "Gcode.h"
 #include "libs/StreamOutput.h"
+#include "libs/StreamOutputPool.h"
 #include "PublicDataRequest.h"
 
 #include <mri.h>
@@ -61,6 +62,7 @@
 
 #define save_state_checksum                  CHECKSUM("save_state")
 #define restore_state_checksum               CHECKSUM("restore_state")
+#define enable_extrusion_checksum            CHECKSUM("enable_extrusion")
 
 #define X_AXIS      0
 #define Y_AXIS      1
@@ -71,6 +73,10 @@
 #define FOLLOW 2
 
 #define PI 3.14159265358979F
+
+#define ENABLE_EXTRUSION           0
+#define DISABLE_EXTRUSION          1
+#define DISABLE_EXTRUSION_AND_HALT 4
 
 
 /* The extruder module controls a filament extruder for 3D printing: http://en.wikipedia.org/wiki/Fused_deposition_modeling
@@ -89,6 +95,7 @@ Extruder::Extruder( uint16_t config_identifier, bool single )
     this->volumetric_multiplier = 1.0F;
     this->extruder_multiplier = 1.0F;
     this->stepper_motor= nullptr;
+    this->enable_extrusion = ENABLE_EXTRUSION;
 
     memset(this->offset, 0, sizeof(this->offset));
 }
@@ -200,6 +207,11 @@ void Extruder::on_get_public_data(void* argument){
 
     if(!pdr->starts_with(extruder_checksum)) return;
 
+    // Support checking for "old style" configuration:
+    // If an extruder identifier was given and we're working in an old style
+    // environment don't react to this request.
+    if(!pdr->second_element_is(0) && this->single_config) return;
+
     if(this->enabled) {
         // Note this is allowing both step/mm and filament diameter to be exposed via public data
         pdr->set_data_ptr(&this->steps_per_millimeter);
@@ -222,6 +234,12 @@ void Extruder::on_set_public_data(void *argument)
         this->current_position= this->saved_current_position;
         this->absolute_mode= this->saved_absolute_mode;
         pdr->set_taken();
+    } else if(pdr->second_element_is(enable_extrusion_checksum)) {
+        // It seems someone wants to update the temperature OK flag. Check if
+        // this is addressed to us.
+        if(pdr->third_element_is(this->get_name())) {
+            this->enable_extrusion = *static_cast<uint8_t*>(pdr->get_data_ptr());
+        }
     }
 }
 
@@ -423,6 +441,18 @@ void Extruder::on_gcode_execute(void *argument)
 
 
     if( gcode->has_g && this->enabled ) {
+        if(this->enable_extrusion != ENABLE_EXTRUSION && gcode->g != 92) {
+            // Let cold extrusion prevention only operate on actual movement
+            // commands
+            THEKERNEL->streams->printf("Error: Cold extrusion prevention triggered!\n");
+            if(this->enable_extrusion == DISABLE_EXTRUSION_AND_HALT) {
+                // We should halt when a cold extrusion is prevented
+                THEKERNEL->call_event(ON_HALT);
+            }
+
+            return;
+        }
+
         // G92: Reset extruder position
         if( gcode->g == 92 ) {
             if( gcode->has_letter('E') ) {

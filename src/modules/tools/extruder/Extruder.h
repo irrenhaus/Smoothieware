@@ -73,6 +73,8 @@ class Extruder : public Tool {
         float retract_zlift_length;
         float retract_zlift_feedrate;
 
+        uint8_t enable_extrusion;
+
         struct {
             char mode:3;        // extruder motion mode,  OFF, SOLO, or FOLLOW
             bool absolute_mode:1; // absolute/relative coordinate mode switch

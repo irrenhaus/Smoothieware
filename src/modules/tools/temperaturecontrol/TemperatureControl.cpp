@@ -63,6 +63,16 @@
 #define preset1_checksum                   CHECKSUM("preset1")
 #define preset2_checksum                   CHECKSUM("preset2")
 
+#define min_extrusion_temp_checksum        CHECKSUM("min_extrusion_temperature")
+#define halt_on_cold_extrusion_checksum    CHECKSUM("halt_on_cold_extrusion")
+
+#define extruder_checksum                  CHECKSUM("extruder")
+#define enable_extrusion_checksum          CHECKSUM("enable_extrusion")
+
+#define ENABLE_EXTRUSION                   0
+#define DISABLE_EXTRUSION                  1
+#define DISABLE_EXTRUSION_AND_HALT         4
+
 TemperatureControl::TemperatureControl(uint16_t name, int index)
 {
     name_checksum= name;
@@ -71,6 +81,9 @@ TemperatureControl::TemperatureControl(uint16_t name, int index)
     min_temp_violated= false;
     sensor= nullptr;
     readonly= false;
+    halt_on_cold_extrusion= false;
+    min_extrusion_temp= 0;
+    enable_extrusion = ENABLE_EXTRUSION;
 }
 
 TemperatureControl::~TemperatureControl()
@@ -186,6 +199,24 @@ void TemperatureControl::load_config()
     setPIDp( THEKERNEL->config->value(temperature_control_checksum, this->name_checksum, p_factor_checksum)->by_default(10 )->as_number() );
     setPIDi( THEKERNEL->config->value(temperature_control_checksum, this->name_checksum, i_factor_checksum)->by_default(0.3f)->as_number() );
     setPIDd( THEKERNEL->config->value(temperature_control_checksum, this->name_checksum, d_factor_checksum)->by_default(200)->as_number() );
+
+    // Cold extrusion prevention
+    this->halt_on_cold_extrusion = THEKERNEL->config->value(temperature_control_checksum, this->name_checksum, halt_on_cold_extrusion_checksum)->by_default(false)->as_bool();
+    this->min_extrusion_temp = THEKERNEL->config->value(temperature_control_checksum, this->name_checksum, min_extrusion_temp_checksum)->by_default(0)->as_number();
+
+    if(this->min_extrusion_temp != 0) {
+        // Check if this is an old style configuration system
+
+        void *returned_data;
+        bool handled = PublicData::get_value(extruder_checksum, this->name_checksum, &returned_data);
+        if(!handled) {
+            // We could not match the extruder - this seems to be a "old
+            // style" system. Disable cold extrusion prevention
+            // from now on and warn the user.
+            min_extrusion_temp = 0;
+            THEKERNEL->streams->printf("Error: Cold extrusion prevention is activated but we could not match the extruder. Please update your configuration to the new multi-extruder style.\nNOTE: Cold extrusion prevention does NOT work\n");
+        }
+    }
 
     if(!this->readonly) {
         // set to the same as max_pwm by default
@@ -412,9 +443,32 @@ uint32_t TemperatureControl::thermistor_read_tick(uint32_t dummy)
         } else {
             pid_process(temperature);
         }
+
+        if(this->min_extrusion_temp != 0) {
+            if(temperature < this->min_extrusion_temp      &&
+               this->enable_extrusion == ENABLE_EXTRUSION) {
+
+                // Whups, we better disable the extruder
+                this->enable_extrusion = DISABLE_EXTRUSION;
+                if(this->halt_on_cold_extrusion) {
+                    this->enable_extrusion = DISABLE_EXTRUSION_AND_HALT;
+                }
+                PublicData::set_value(extruder_checksum,
+                                      enable_extrusion_checksum,
+                                      this->name_checksum,
+                                      &this->enable_extrusion);
+            } else if(this->enable_extrusion != ENABLE_EXTRUSION) {
+                this->enable_extrusion = ENABLE_EXTRUSION;
+                PublicData::set_value(extruder_checksum,
+                                      enable_extrusion_checksum,
+                                      name_checksum,
+                                      &this->enable_extrusion);
+            }
+        }
     } else {
         heater_pin.set((this->o = 0));
     }
+
     last_reading = temperature;
     return 0;
 }

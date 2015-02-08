@@ -81,6 +81,10 @@ class TemperatureControl : public Module {
         float d_factor;
         float PIDdt;
 
+        bool    halt_on_cold_extrusion;
+        uint8_t min_extrusion_temp;
+        uint8_t enable_extrusion;
+
         struct {
             bool use_bangbang:1;
             bool waiting:1;
