@@ -137,6 +137,9 @@ temperature_control.hotend.designator        T                #
 
 #temperature_control.hotend.max_pwm          64               # max pwm, 64 is a good value if driving a 12v resistor with 24v.
 
+#temperature_control.hotend.min_extrusion_temperature 170     # Minimal temperature to do any extruder moves. Set to 0 to disable checks.
+#temperature_control.hotend.halt_on_cold_extrusion    true    # If ON_HALT should be called if a cold extrusion was prevented
+
 # Hotend2 temperature control configuration
 #temperature_control.hotend2.enable            true             # Whether to activate this ( "hotend" ) module at all.
                                                               # All configuration is ignored if false.
@@ -313,7 +316,7 @@ network.ip_address                           auto             # use dhcp to get 
 #network.ip_gateway                           192.168.3.1      # the gateway address
 #network.mac_override                         xx.xx.xx.xx.xx.xx  # override the mac address, only do this if you have a conflict
 
-# Drills module 
+# Drills module
 # Implement the Canned Drilling Cycles
 # G80-83, G98, G99 in absolute mode only
 # Incremental mode not implemented (L)
