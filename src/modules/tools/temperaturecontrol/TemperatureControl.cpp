@@ -214,8 +214,11 @@ void TemperatureControl::load_config()
             // style" system. Disable cold extrusion prevention
             // from now on and warn the user.
             min_extrusion_temp = 0;
-            THEKERNEL->streams->printf("Error: Cold extrusion prevention is activated but we could not match the extruder. Please update your configuration to the new multi-extruder style.\nNOTE: Cold extrusion prevention does NOT work\n");
+            THEKERNEL->streams->printf("Error: Cold extrusion prevention is activated but we could not match the extruder.\r\nPlease update your configuration to the new multi-extruder style.\r\nNOTE: Cold extrusion prevention does NOT work\r\n");
         }
+
+        // Disable the extruder if enabled
+        check_cold_extrusion(0);
     }
 
     if(!this->readonly) {
@@ -430,6 +433,9 @@ float TemperatureControl::get_temperature()
 uint32_t TemperatureControl::thermistor_read_tick(uint32_t dummy)
 {
     float temperature = sensor->get_temperature();
+
+    check_cold_extrusion(temperature);
+
     if(this->readonly) {
         last_reading = temperature;
         return 0;
@@ -443,34 +449,37 @@ uint32_t TemperatureControl::thermistor_read_tick(uint32_t dummy)
         } else {
             pid_process(temperature);
         }
-
-        if(this->min_extrusion_temp != 0) {
-            if(temperature < this->min_extrusion_temp      &&
-               this->enable_extrusion == ENABLE_EXTRUSION) {
-
-                // Whups, we better disable the extruder
-                this->enable_extrusion = DISABLE_EXTRUSION;
-                if(this->halt_on_cold_extrusion) {
-                    this->enable_extrusion = DISABLE_EXTRUSION_AND_HALT;
-                }
-                PublicData::set_value(extruder_checksum,
-                                      enable_extrusion_checksum,
-                                      this->name_checksum,
-                                      &this->enable_extrusion);
-            } else if(this->enable_extrusion != ENABLE_EXTRUSION) {
-                this->enable_extrusion = ENABLE_EXTRUSION;
-                PublicData::set_value(extruder_checksum,
-                                      enable_extrusion_checksum,
-                                      name_checksum,
-                                      &this->enable_extrusion);
-            }
-        }
     } else {
         heater_pin.set((this->o = 0));
     }
 
     last_reading = temperature;
     return 0;
+}
+
+void TemperatureControl::check_cold_extrusion(float temperature) {
+    if(this->min_extrusion_temp != 0) {
+        if(temperature < this->min_extrusion_temp      &&
+           this->enable_extrusion == ENABLE_EXTRUSION) {
+
+            // Whups, we better disable the extruder
+            this->enable_extrusion = DISABLE_EXTRUSION;
+            if(this->halt_on_cold_extrusion) {
+                this->enable_extrusion = DISABLE_EXTRUSION_AND_HALT;
+            }
+            PublicData::set_value(extruder_checksum,
+                                  enable_extrusion_checksum,
+                                  this->name_checksum,
+                                  &this->enable_extrusion);
+        } else if(temperature >= this->min_extrusion_temp &&
+                  this->enable_extrusion != ENABLE_EXTRUSION) {
+            this->enable_extrusion = ENABLE_EXTRUSION;
+            PublicData::set_value(extruder_checksum,
+                                  enable_extrusion_checksum,
+                                  name_checksum,
+                                  &this->enable_extrusion);
+        }
+    }
 }
 
 /**

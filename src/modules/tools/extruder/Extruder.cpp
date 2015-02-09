@@ -240,6 +240,7 @@ void Extruder::on_set_public_data(void *argument)
         if(pdr->third_element_is(this->get_name())) {
             this->enable_extrusion = *static_cast<uint8_t*>(pdr->get_data_ptr());
         }
+        pdr->set_taken();
     }
 }
 
@@ -444,7 +445,7 @@ void Extruder::on_gcode_execute(void *argument)
         if(this->enable_extrusion != ENABLE_EXTRUSION && gcode->g != 92) {
             // Let cold extrusion prevention only operate on actual movement
             // commands
-            THEKERNEL->streams->printf("Error: Cold extrusion prevention triggered!\n");
+            THEKERNEL->streams->printf("Error: Cold extrusion prevention triggered!\r\n");
             if(this->enable_extrusion == DISABLE_EXTRUSION_AND_HALT) {
                 // We should halt when a cold extrusion is prevented
                 THEKERNEL->call_event(ON_HALT);

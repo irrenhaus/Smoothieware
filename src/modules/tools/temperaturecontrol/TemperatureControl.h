@@ -37,6 +37,7 @@ class TemperatureControl : public Module {
         void load_config();
         uint32_t thermistor_read_tick(uint32_t dummy);
         void pid_process(float);
+        void check_cold_extrusion(float);
 
         int pool_index;
 
